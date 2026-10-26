@@ -58,7 +58,7 @@ class GatewayTests(unittest.TestCase):
     def test_video_route_absent_fails_fast(self):
         with patch.object(mod, "_probe_localai", return_value={"backend_ready": True,
                                                                "video_api_ready": False,
-                                                               "video_get_http_status": 404,
+                                                               "video_probe_http_status": 404,
                                                                "model_installed": None}):
             r = self.client.post("/api/presenter/create", headers={"X-API-Key": "secret"}, files={
                 "avatar": ("p.png", b"pretend_png", "image/png"),
@@ -70,7 +70,7 @@ class GatewayTests(unittest.TestCase):
     def test_health_degraded_without_video_route(self):
         with patch.object(mod, "_probe_localai", return_value={"backend_ready": True,
                                                                "video_api_ready": False,
-                                                               "video_get_http_status": 404,
+                                                               "video_probe_http_status": 404,
                                                                "model_installed": True,
                                                                "model_list_http_status": 200}):
             r = self.client.get("/health")
