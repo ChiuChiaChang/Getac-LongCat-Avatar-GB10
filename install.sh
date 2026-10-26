@@ -53,6 +53,13 @@ else
   info 'INSTALL_MODEL=0 selected: only API containers were installed; weights were not downloaded.'
 fi
 
+info 'Checking the LocalAI POST /video API route...'
+GET_VIDEO_STATUS="$(docker compose exec -T longcat-core sh -c 'curl -sS --max-time 10 -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/video' 2>/dev/null || true)"
+if [[ "$GET_VIDEO_STATUS" != '405' ]]; then
+  info "GET /video returned HTTP $GET_VIDEO_STATUS (expected 405, meaning POST route exists)."
+  fail 'LocalAI video route unavailable. Run ./fix-video-api.sh and retry before testing the Windows Studio.'
+fi
+info 'LocalAI /video route exists (GET method -> 405).'
 info 'Checking Getac API status'
 curl -fsS "http://127.0.0.1:$PORT/health" || true
 printf '\n\nSUCCESS: deployment containers are running.\n'
