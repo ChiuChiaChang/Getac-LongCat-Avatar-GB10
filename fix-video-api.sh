@@ -47,9 +47,9 @@ if (( READY == 0 )); then
   fail 'LocalAI did not become ready.'
 fi
 
-HTTP_CODE="$(docker compose exec -T longcat-core sh -c 'curl -sS --max-time 10 -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/video' 2>/dev/null || true)"
-log "GET /video => HTTP $HTTP_CODE"
-if [[ "$HTTP_CODE" != '405' ]]; then
+HTTP_CODE="$(docker compose exec -T longcat-core sh -c 'curl -sS --max-time 10 -X POST -H "Content-Type: application/json" --data-binary "{" -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/video' 2>/dev/null || true)"
+log "Malformed-JSON POST /video => HTTP $HTTP_CODE"
+if [[ ! "$HTTP_CODE" =~ ^(400|415|422)$ ]]; then
   log 'Official LocalAI API uses POST /video; GET should return HTTP 405, not HTTP 404.'
   docker compose exec -T longcat-core sh -c 'local-ai --version || true' || true
   fail 'LocalAI video route is still missing. Provide docker compose logs --tail=100 longcat-core.'
