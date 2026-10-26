@@ -54,12 +54,12 @@ else
 fi
 
 info 'Checking the LocalAI POST /video API route...'
-GET_VIDEO_STATUS="$(docker compose exec -T longcat-core sh -c 'curl -sS --max-time 10 -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/video' 2>/dev/null || true)"
-if [[ "$GET_VIDEO_STATUS" != '405' ]]; then
-  info "GET /video returned HTTP $GET_VIDEO_STATUS (expected 405, meaning POST route exists)."
-  fail 'LocalAI video route unavailable. Run ./fix-video-api.sh and retry before testing the Windows Studio.'
+VIDEO_PROBE_STATUS="$(docker compose exec -T longcat-core sh -c 'curl -sS --max-time 10 -X POST -H "Content-Type: application/json" --data-binary "{" -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/video' 2>/dev/null || true)"
+if [[ ! "$VIDEO_PROBE_STATUS" =~ ^(400|415|422)$ ]]; then
+  info "Malformed-JSON POST /video returned HTTP $VIDEO_PROBE_STATUS (expected 400/415/422)."
+  fail 'LocalAI video route unavailable. Run ./fix-video-api.sh before testing Windows Studio.'
 fi
-info 'LocalAI /video route exists (GET method -> 405).'
+info "LocalAI POST /video exists (malformed JSON rejected HTTP $VIDEO_PROBE_STATUS)."
 info 'Checking Getac API status'
 curl -fsS "http://127.0.0.1:$PORT/health" || true
 printf '\n\nSUCCESS: deployment containers are running.\n'
