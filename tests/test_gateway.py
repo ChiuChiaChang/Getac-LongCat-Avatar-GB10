@@ -38,7 +38,10 @@ class GatewayTests(unittest.TestCase):
         def mock_job(folder, *args):
             mod._put_status(folder, "running", "Mock, no GPU", 33)
             mod._job_lock.release()
-        with patch.object(mod, "_run_job", side_effect=mock_job):
+        with patch.object(mod, "_probe_localai", return_value={"backend_ready": True,
+                                                               "video_api_ready": True,
+                                                               "model_installed": True}):
+          with patch.object(mod, "_run_job", side_effect=mock_job):
             r = self.client.post("/api/presenter/create", headers={"X-API-Key": "secret"}, files={
                 "avatar": ("p.png", b"pretend_png", "image/png"),
                 "audio": ("a.wav", b"pretend_wav", "audio/wav"),
@@ -51,6 +54,28 @@ class GatewayTests(unittest.TestCase):
         resp = self.client.get("/api/presenter/result/" + job_id, headers={"X-API-Key": "secret"})
         self.assertEqual(409, resp.status_code)
         self.assertEqual(400, self.client.get("/api/presenter/status/not-a-uuid", headers={"X-API-Key": "secret"}).status_code)
+
+    def test_video_route_absent_fails_fast(self):
+        with patch.object(mod, "_probe_localai", return_value={"backend_ready": True,
+                                                               "video_api_ready": False,
+                                                               "video_get_http_status": 404,
+                                                               "model_installed": None}):
+            r = self.client.post("/api/presenter/create", headers={"X-API-Key": "secret"}, files={
+                "avatar": ("p.png", b"pretend_png", "image/png"),
+                "audio": ("a.wav", b"pretend_wav", "audio/wav"),
+            })
+        self.assertEqual(503, r.status_code)
+        self.assertIn("fix-video-api.sh", r.json()["detail"])
+
+    def test_health_degraded_without_video_route(self):
+        with patch.object(mod, "_probe_localai", return_value={"backend_ready": True,
+                                                               "video_api_ready": False,
+                                                               "video_get_http_status": 404,
+                                                               "model_installed": True,
+                                                               "model_list_http_status": 200}):
+            r = self.client.get("/health")
+        self.assertEqual("degraded", r.json()["status"])
+        self.assertFalse(r.json()["video_api_ready"])
 
     def test_localai_url_response_parser(self):
         self.assertEqual('/generated-videos/a.mp4', mod._extract_video_url({"data": [{"url": "/generated-videos/a.mp4"}]}))
