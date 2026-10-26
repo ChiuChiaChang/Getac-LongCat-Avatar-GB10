@@ -36,7 +36,7 @@ chmod +x *.sh
 curl -s http://127.0.0.1:8500/health
 ```
 
-Starting with v1.0.1.0, `/health` reports `backend_ready`, `video_api_ready`, `model_installed` independently. When the POST route is present, `GET /video` should return HTTP **405 Method Not Allowed**, not 404. Model installation and GPU inference still require validation.
+Starting with v1.0.1.0, `/health` reports `backend_ready`, `video_api_ready`, `model_installed` independently. To test route existence without GPU inference, send intentionally malformed JSON to `POST /video`. An available route should reject it with **HTTP 400/415/422**, whereas **404** may mean the route is unavailable. Model installation and GPU inference still require validation.
 
 The repair script pins the current supported DGX Spark CUDA 13 ARM64 image, backs up `.env`, restarts **only the two LongCat containers**, and preserves `data/models` and `data/jobs`. It does not stop other Getac services on ports 8100–8400.
 
