@@ -7,3 +7,7 @@ __pycache__/
 *.safetensors
 *.gguf
 *.bin
+
+# Auto-backups of local .env may contain private tokens.
+.env.backup.*
+.env.*.bak
