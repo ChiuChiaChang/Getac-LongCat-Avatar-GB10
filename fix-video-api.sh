@@ -55,11 +55,8 @@ if [[ ! "$HTTP_CODE" =~ ^(400|415|422)$ ]]; then
   fail 'LocalAI video route is still missing. Provide docker compose logs --tail=100 longcat-core.'
 fi
 
-MODEL_LIST="$(docker compose exec -T longcat-core sh -c 'curl -fsS --max-time 12 http://127.0.0.1:8080/v1/models' 2>/dev/null || true)"
-if ! grep -Fq 'longcat-video-avatar-1.5' <<< "$MODEL_LIST"; then
-  log 'Avatar 1.5 not listed by /v1/models; installing the gallery entry without removing cached weights.'
-  docker compose exec -T longcat-core local-ai models install longcat-video-avatar-1.5 || fail 'Model install failed; see logs.'
-fi
+log 'Ensuring LongCat Avatar 1.5 model is installed and registered...'
+bash ./fix-model.sh || fail 'Model installation/registration failed; see the previous diagnostics.'
 
 PORT="$(sed -n 's/^PORT=//p' .env | tail -1)"; PORT="${PORT:-8500}"
 log 'Checking Getac Gateway health with route/model diagnostics.'
