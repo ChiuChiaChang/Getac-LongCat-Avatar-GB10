@@ -1,7 +1,7 @@
 name: getac-longcat-avatar
 services:
   longcat-core:
-    image: ${LOCALAI_IMAGE:-localai/localai:latest-nvidia-l4t-arm64-cuda-13}
+    image: ${LOCALAI_IMAGE:-localai/localai:v4.12.1-nvidia-l4t-arm64-cuda-13}
     container_name: getac-longcat-core
     restart: unless-stopped
     init: true
