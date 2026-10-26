@@ -41,6 +41,13 @@ if (( READY != 1 )); then
   fail 'LocalAI API did not become ready. The gateway might still answer /health (degraded).'
 fi
 
+info 'Verifying LocalAI POST /video route without generating a video.'
+VIDEO_PROBE_STATUS="$(docker compose exec -T longcat-core sh -c 'curl -sS --max-time 10 -X POST -H "Content-Type: application/json" --data-binary "{" -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/video' 2>/dev/null || true)"
+if [[ ! "$VIDEO_PROBE_STATUS" =~ ^(400|415|422)$ ]]; then
+  fail "LocalAI POST /video route failed preflight (HTTP $VIDEO_PROBE_STATUS). Run ./fix-video-api.sh"
+fi
+info "LocalAI POST /video route confirmed (invalid JSON rejected: HTTP $VIDEO_PROBE_STATUS)."
+
 if [[ "${INSTALL_MODEL:-1}" == '1' ]]; then
   info 'Installing and verifying LongCat-Video-Avatar-1.5 via LocalAI gallery HTTP API.'
   bash ./fix-model.sh || fail 'Model install/registration failed; check LocalAI logs.'
