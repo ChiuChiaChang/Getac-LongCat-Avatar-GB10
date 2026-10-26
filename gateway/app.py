@@ -1,4 +1,4 @@
-"""Getac LongCat Video Avatar GB10 API v1.0.0.0.
+"""Getac LongCat Video Avatar GB10 API v1.0.1.0.
 
 Small single-job bridge to the LocalAI CUDA13 ARM64 longcat-video backend.
 This does not claim LocalAI model load/inference has been validated on the user's GB10.
@@ -19,7 +19,7 @@ import httpx
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-APP_VERSION = "1.0.0.0"
+APP_VERSION = "1.0.1.0"
 BASE_URL = os.getenv("LOCALAI_URL", "http://longcat-core:8080").rstrip("/")
 MODEL_NAME = os.getenv("MODEL_NAME", "longcat-video-avatar-1.5")
 JOB_ROOT = Path(os.getenv("JOB_ROOT", "/data/jobs"))
@@ -93,6 +93,33 @@ def _extract_video_url(body: dict) -> str:
     return url
 
 
+def _probe_localai() -> dict:
+    """Separate general LocalAI readiness from support for POST /video.
+
+    GET /video is expected to return HTTP 405 on builds with the POST route.
+    404 indicates that the installed LocalAI binary does not expose it.
+    """
+    result = {"backend_ready": False, "video_api_ready": False,
+              "video_get_http_status": None, "model_installed": None,
+              "model_list_http_status": None}
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            ready = client.get(BASE_URL + "/readyz")
+            result["backend_ready"] = ready.status_code == 200
+            route = client.get(BASE_URL + "/video")
+            result["video_get_http_status"] = route.status_code
+            result["video_api_ready"] = route.status_code == 405
+            models = client.get(BASE_URL + "/v1/models")
+            result["model_list_http_status"] = models.status_code
+            if models.status_code == 200:
+                data = models.json().get("data", [])
+                ids = [str(x.get("id", "")) for x in data if isinstance(x, dict)]
+                result["model_installed"] = MODEL_NAME in ids
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        result["error"] = str(exc)[:300]
+    return result
+
+
 def _run_job(folder: Path, image_path: Path, audio_path: Path, prompt: str,
              resolution: str, max_segments: int) -> None:
     try:
@@ -105,12 +132,18 @@ def _run_job(folder: Path, image_path: Path, audio_path: Path, prompt: str,
             "width": 832 if resolution == "480p" else 1280,
             "height": 480 if resolution == "480p" else 720,
             "response_format": "url",
-            "params": {"resolution": resolution, "max_segments": str(max_segments)},
+            "params": {"resolution": resolution, "offload_kv_cache": "true"},
         }
         _put_status(folder, "running", "Running LongCat GPU inference (may take considerable time)", 25)
         with httpx.Client(timeout=httpx.Timeout(connect=30, read=None, write=300, pool=60)) as client:
             response = client.post(BASE_URL + "/video", json=body)
-            response.raise_for_status()
+            if response.status_code == 404:
+                raise RuntimeError("LocalAI POST /video returned HTTP 404. The installed "
+                                   "LocalAI binary does not expose this API. On GB10 run "
+                                   "./fix-video-api.sh. Details: " + response.text[:350])
+            if response.is_error:
+                raise RuntimeError(f"LocalAI POST /video returned HTTP {response.status_code}: "
+                                   + response.text[:700])
             payload = response.json()
             (folder / "localai_response.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
             result = _extract_video_url(payload)
@@ -143,15 +176,24 @@ def _run_job(folder: Path, image_path: Path, audio_path: Path, prompt: str,
 
 @app.get("/health")
 def health() -> dict:
-    try:
-        with httpx.Client(timeout=3) as client:
-            reply = client.get(BASE_URL + "/readyz")
-        online = reply.status_code == 200
-    except Exception:
-        online = False
-    return {"status": "ok" if online else "degraded", "version": APP_VERSION,
-            "model": MODEL_NAME, "backend_ready": online, "api_port": 8500,
-            "note": "Backend readiness is not proof that model weights are installed or GPU inference succeeds."}
+    probe = _probe_localai()
+    backend_ready = probe["backend_ready"]
+    video_api_ready = probe["video_api_ready"]
+    model_installed = probe["model_installed"]
+    return {
+        "status": "ok" if backend_ready and video_api_ready and model_installed is True else "degraded",
+        "version": APP_VERSION,
+        "model": MODEL_NAME,
+        "backend_ready": backend_ready,
+        "video_api_ready": video_api_ready,
+        "video_get_http_status": probe["video_get_http_status"],
+        "model_installed": model_installed,
+        "model_list_http_status": probe["model_list_http_status"],
+        "api_port": 8500,
+        "note": ("API/model checks are not proof of successful GPU inference. "
+                 "If video_api_ready=false, run ./fix-video-api.sh on GB10."),
+        **({"probe_error": probe["error"]} if probe.get("error") else {})
+    }
 
 
 @app.post("/api/presenter/create", status_code=202)
@@ -172,6 +214,16 @@ async def create(image: UploadFile | None = File(default=None),
         raise HTTPException(status_code=415, detail="Image must be PNG or JPG")
     if not (audio.filename or "").lower().endswith(".wav"):
         raise HTTPException(status_code=415, detail="Audio must be WAV")
+    probe = _probe_localai()
+    if not probe["backend_ready"] or not probe["video_api_ready"]:
+        raise HTTPException(status_code=503,
+                            detail="LocalAI POST /video is unavailable or the server is unready "
+                                   f"(GET /video HTTP {probe['video_get_http_status']}). "
+                                   "On GB10 run ./fix-video-api.sh, then check /health.")
+    if probe["model_installed"] is False:
+        raise HTTPException(status_code=503,
+                            detail=f"LocalAI model '{MODEL_NAME}' is not installed. "
+                                   "Run ./fix-video-api.sh on GB10, then check /health.")
     if not _job_lock.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="Only one inference at a time is supported on GB10")
     folder = JOB_ROOT / str(uuid.uuid4())
