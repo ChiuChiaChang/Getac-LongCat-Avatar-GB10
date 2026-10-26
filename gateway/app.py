@@ -96,19 +96,20 @@ def _extract_video_url(body: dict) -> str:
 def _probe_localai() -> dict:
     """Separate general LocalAI readiness from support for POST /video.
 
-    GET /video is expected to return HTTP 405 on builds with the POST route.
-    404 indicates that the installed LocalAI binary does not expose it.
+    An invalid JSON POST to /video should return HTTP 400/415/422 before GPU inference.
+    A 404 indicates that the installed LocalAI binary does not expose it.
     """
     result = {"backend_ready": False, "video_api_ready": False,
-              "video_get_http_status": None, "model_installed": None,
+              "video_probe_http_status": None, "model_installed": None,
               "model_list_http_status": None}
     try:
         with httpx.Client(timeout=5.0) as client:
             ready = client.get(BASE_URL + "/readyz")
             result["backend_ready"] = ready.status_code == 200
-            route = client.get(BASE_URL + "/video")
-            result["video_get_http_status"] = route.status_code
-            result["video_api_ready"] = route.status_code == 405
+            route = client.post(BASE_URL + "/video", content=b"{",
+                                headers={"Content-Type": "application/json"})
+            result["video_probe_http_status"] = route.status_code
+            result["video_api_ready"] = route.status_code in (400, 415, 422)
             models = client.get(BASE_URL + "/v1/models")
             result["model_list_http_status"] = models.status_code
             if models.status_code == 200:
@@ -186,7 +187,7 @@ def health() -> dict:
         "model": MODEL_NAME,
         "backend_ready": backend_ready,
         "video_api_ready": video_api_ready,
-        "video_get_http_status": probe["video_get_http_status"],
+        "video_probe_http_status": probe["video_probe_http_status"],
         "model_installed": model_installed,
         "model_list_http_status": probe["model_list_http_status"],
         "api_port": 8500,
@@ -218,7 +219,7 @@ async def create(image: UploadFile | None = File(default=None),
     if not probe["backend_ready"] or not probe["video_api_ready"]:
         raise HTTPException(status_code=503,
                             detail="LocalAI POST /video is unavailable or the server is unready "
-                                   f"(GET /video HTTP {probe['video_get_http_status']}). "
+                                   f"(invalid-JSON POST /video HTTP {probe['video_probe_http_status']}). "
                                    "On GB10 run ./fix-video-api.sh, then check /health.")
     if probe["model_installed"] is False:
         raise HTTPException(status_code=503,
