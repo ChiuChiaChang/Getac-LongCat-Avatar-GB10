@@ -42,24 +42,12 @@ if (( READY != 1 )); then
 fi
 
 if [[ "${INSTALL_MODEL:-1}" == '1' ]]; then
-  info 'Installing meituan-longcat/LongCat-Video-Avatar-1.5 from the LocalAI model gallery.'
-  info 'This may download very large weights and base model components; do not interrupt unless needed.'
-  if ! docker compose exec -T -e LOCALAI_MODELS_PATH=/models longcat-core local-ai models install longcat-video-avatar-1.5; then
-    info 'CLI install failed. You can use the model gallery UI on port 8500 only if forwarded, or retry:'
-    echo 'docker compose exec -T longcat-core local-ai models install longcat-video-avatar-1.5'
-    fail 'Model weights were not confirmed installed.'
-  fi
+  info 'Installing and verifying LongCat-Video-Avatar-1.5 via LocalAI gallery HTTP API.'
+  bash ./fix-model.sh || fail 'Model install/registration failed; check LocalAI logs.'
 else
-  info 'INSTALL_MODEL=0 selected: only API containers were installed; weights were not downloaded.'
+  info 'INSTALL_MODEL=0 selected: only containers started (model registration skipped).'
 fi
 
-info 'Checking the LocalAI POST /video API route...'
-VIDEO_PROBE_STATUS="$(docker compose exec -T longcat-core sh -c 'curl -sS --max-time 10 -X POST -H "Content-Type: application/json" --data-binary "{" -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/video' 2>/dev/null || true)"
-if [[ ! "$VIDEO_PROBE_STATUS" =~ ^(400|415|422)$ ]]; then
-  info "Malformed-JSON POST /video returned HTTP $VIDEO_PROBE_STATUS (expected 400/415/422)."
-  fail 'LocalAI video route unavailable. Run ./fix-video-api.sh before testing Windows Studio.'
-fi
-info "LocalAI POST /video exists (malformed JSON rejected HTTP $VIDEO_PROBE_STATUS)."
 info 'Checking Getac API status'
 curl -fsS "http://127.0.0.1:$PORT/health" || true
 printf '\n\nSUCCESS: deployment containers are running.\n'
