@@ -1,0 +1,47 @@
+name: getac-longcat-avatar
+services:
+  longcat-core:
+    image: ${LOCALAI_IMAGE:-localai/localai:latest-nvidia-l4t-arm64-cuda-13}
+    container_name: getac-longcat-core
+    restart: unless-stopped
+    init: true
+    gpus: all
+    shm_size: 16gb
+    environment:
+      LOCALAI_MODELS_PATH: /models
+      HF_HOME: /models/.cache/huggingface
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - ./data/models:/models
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/readyz >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 30
+      start_period: 300s
+
+  gateway:
+    build: ./gateway
+    container_name: getac-longcat-api
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${BIND_IP:-0.0.0.0}:${PORT:-8500}:8500"
+    environment:
+      LOCALAI_URL: http://longcat-core:8080
+      JOB_ROOT: /data/jobs
+      GETAC_API_KEY: ${GETAC_API_KEY:-}
+      MODEL_NAME: longcat-video-avatar-1.5
+    volumes:
+      - ./data/jobs:/data/jobs
+    depends_on:
+      - longcat-core
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8500/health',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
