@@ -40,6 +40,24 @@ Starting with v1.0.1.0, `/health` reports `backend_ready`, `video_api_ready`, `m
 
 The repair script pins the current supported DGX Spark CUDA 13 ARM64 image, backs up `.env`, restarts **only the two LongCat containers**, and preserves `data/models` and `data/jobs`. It does not stop other Getac services on ports 8100–8400.
 
+## Fix: /health has model_installed=false (installer v1.0.2.0)
+
+`backend_ready=true` and `video_api_ready=true` confirm the LocalAI service and `POST /video` route. `model_installed=false` means the expected model ID is missing from LocalAI's `GET /v1/models` registry; it does **not** establish whether all Hugging Face weights are already downloaded.
+
+On the GB10 host, from this repository checkout:
+
+```bash
+git status --short
+git pull --ff-only
+chmod +x fix-model.sh
+./fix-model.sh
+curl -s http://127.0.0.1:8500/health
+```
+
+`fix-model.sh` now uses the **running LocalAI API** `POST /models/apply` (gallery ID `localai@longcat-video-avatar-1.5`), follows `GET /models/jobs/{uuid}`, checks installation errors, and confirms the exact ID in `GET /v1/models`. It does not remove existing models, restart unrelated containers, or claim GPU inference success without testing. It may require a large download or defer weight loading until first inference. If the install job completes but the model does not appear, the script reports the problem instead of reporting success.
+
+Note: Local changes to a tracked shell script can prevent `git pull`. In that case, inspect and stash only the changed script, then pull. Do not delete `data/` or your Docker volumes.
+
 ## API
 
 - `GET /health`：LocalAI 服務就緒狀態，**不是 GPU 推論成功證明**
