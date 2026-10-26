@@ -1,4 +1,4 @@
-# Getac LongCat Avatar GB10 v1.0.0.0
+# Getac LongCat Avatar GB10 v1.0.1.0
 
 一鍵部署 **LongCat-Video-Avatar 1.5**，在 NVIDIA GB10（DGX Spark / Linux ARM64）使用 **PNG/JPG + WAV** 產生 AI 主播 MP4。
 
@@ -22,6 +22,23 @@ chmod +x *.sh
 ```bash
 ./test.sh presenter.png speech.wav output.mp4
 ```
+
+## Fix: LocalAI POST /video returns 404 (v1.0.1.0)
+
+The official LocalAI video endpoint **is** `POST /video` (not `/v1/video`). An HTTP 404 on `longcat-core:8080/video` indicates that the current LocalAI runtime may not include the video route. The previous `/health` endpoint only checked general backend readiness, which was insufficient.
+
+Update and repair on GB10:
+
+```bash
+git pull
+chmod +x *.sh
+./fix-video-api.sh
+curl -s http://127.0.0.1:8500/health
+```
+
+Starting with v1.0.1.0, `/health` reports `backend_ready`, `video_api_ready`, `model_installed` independently. When the POST route is present, `GET /video` should return HTTP **405 Method Not Allowed**, not 404. Model installation and GPU inference still require validation.
+
+The repair script pins the current supported DGX Spark CUDA 13 ARM64 image, backs up `.env`, restarts **only the two LongCat containers**, and preserves `data/models` and `data/jobs`. It does not stop other Getac services on ports 8100–8400.
 
 ## API
 
