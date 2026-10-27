@@ -1,4 +1,37 @@
-# Getac LongCat Gateway FIFO Queue v1.1.0.0
+# Getac LongCat H200 Natural Presenter Gateway v1.1.1.0
+
+> 與 v1.1.0.0 相容，保留 FIFO 排隊、API Key、舊 Job / MP4 資料，不修改 Qwen 30001 或 LongCat Core。
+
+## 直接從 GitHub 更新 H200
+
+**務必確認沒有 LongCat Job 正在執行後再部署。**
+
+```bash
+cd ~/Getac-LongCat-Avatar-H200
+git pull --ff-only
+bash h200/queue/deploy-h200-queue.sh /home/essw/Getac-LongCat-Avatar-H200
+curl -sS http://127.0.0.1:8500/health | python3 -m json.tool
+```
+
+正常應顯示 `version: 1.1.1.0`、`queue_enabled: true`，以及 `presenter_tuning`。
+
+## 本版自然表情設定
+
+- `GETAC_LONGCAT_REF_IMG_INDEX`：預設 `30`，減少跨片段重複動作。
+- `GETAC_LONGCAT_MASK_FRAME_RANGE`：預設 `4`，改善跨片段銜接。
+- `negative_prompt`：限制誇張張嘴、反覆點頭、重複揮手、鏡頭突然拉近。
+- 保留 `offload_kv_cache=true`，推理步數仍由模型 YAML 決定（`use_distill:true` 為 8 步）。
+- Gateway Log 會紀錄每次 `POST /video` 推論耗時。
+
+監控：
+
+```bash
+sudo docker logs -f --tail 100 getac-longcat-h200-api
+sudo docker logs -f --tail 100 getac-longcat-h200-core
+```
+
+## v1.1.0.0 FIFO Queue 既有功能與說明
+
 
 適用：既有 H200 `~/Getac-LongCat-Avatar-H200`、原有 `getac-longcat-h200-core`、`getac-longcat-h200-api`、GetacPPTAIStudio v1.3.1.45、GB10 (需不同部署指令)。
 
