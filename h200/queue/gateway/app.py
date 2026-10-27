@@ -1,4 +1,4 @@
-"""Getac LongCat Video Avatar Gateway v1.1.0.0 -- durable single-GPU FIFO queue.
+"""Getac LongCat Video Avatar Gateway v1.1.1.0 -- FIFO queue + natural presenter tuning.
 
 Drop-in replacement for existing GB10/H200 gateway/app.py.
 IMPORTANT: run exactly ONE uvicorn worker/replica per JOB_ROOT.  The queue is
@@ -29,7 +29,7 @@ import httpx
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-APP_VERSION = "1.1.0.0"
+APP_VERSION = "1.1.1.0"
 BASE_URL = os.getenv("LOCALAI_URL", "http://longcat-core:8080").rstrip("/")
 MODEL_NAME = os.getenv("MODEL_NAME", "longcat-video-avatar-1.5")
 JOB_ROOT = Path(os.getenv("JOB_ROOT", "/data/jobs"))
@@ -37,11 +37,23 @@ API_KEY = os.getenv("GETAC_API_KEY", "")
 MAX_IMAGE_BYTES = 25 * 1024 * 1024
 MAX_AUDIO_BYTES = 128 * 1024 * 1024
 MAX_PENDING = max(1, int(os.getenv("GETAC_QUEUE_MAX_PENDING", "50")))
+# Backend-supported motion controls. Keep the 8-step distillation MODEL option unchanged.
+# 30 can reduce repeated actions in long continuation; 10 favors original consistency.
+REF_IMG_INDEX = max(0, min(30, int(os.getenv("GETAC_LONGCAT_REF_IMG_INDEX", "30"))))
+MASK_FRAME_RANGE = max(1, min(8, int(os.getenv("GETAC_LONGCAT_MASK_FRAME_RANGE", "4"))))
+NEGATIVE_PROMPT = (
+    "exaggerated expressions, overacting, wide open mouth, repeated head nodding, "
+    "repeated hand waving, excessive smiling, constant eyebrow lifting, "
+    "large arm gestures, body swaying, unstable face, distorted hands, "
+    "camera shake, zoom, sudden close-up"
+)
 DEFAULT_PROMPT = (
-    "A professional presenter faces the camera in a bright neutral studio, "
-    "speaking calmly and naturally with accurate lip movements, subtle blinking, "
-    "stable facial features, minimal head turns and restrained gestures. "
-    "The camera is fixed, the shoulders stay level, and the person's identity stays consistent."
+    "A calm professional presenter facing the camera, speaking in a natural and "
+    "conversational manner with small, precise mouth movements synchronized to speech. "
+    "Relaxed neutral expression with a mild natural smile, occasional soft blinking, "
+    "very subtle head movement. The hands rest near the waist with at most a few "
+    "small explanatory gestures; no rhythmic movement. Upper body and camera remain steady. "
+    "Preserve the original face, age, hairstyle, clothing, and facial proportions."
 )
 JOB_ROOT.mkdir(parents=True, exist_ok=True)
 _log = logging.getLogger("getac.longcat.queue")
@@ -233,20 +245,29 @@ def _run_job(job_id: str) -> None:
         body = {
             "model": MODEL_NAME,
             "prompt": req["prompt"],
+            "negative_prompt": NEGATIVE_PROMPT,
             "start_image": base64.b64encode(image_path.read_bytes()).decode("ascii"),
             "audio": base64.b64encode(audio_path.read_bytes()).decode("ascii"),
             "width": 832 if req["resolution"] == "480p" else 1280,
             "height": 480 if req["resolution"] == "480p" else 720,
             "response_format": "url",
-            "params": {"resolution": req["resolution"], "offload_kv_cache": "true"},
+            "params": {
+                "resolution": req["resolution"],
+                "offload_kv_cache": "true",  # Prevent CUDA OOM when Qwen shares GPU 1.
+                "ref_img_index": str(REF_IMG_INDEX),
+                "mask_frame_range": str(MASK_FRAME_RANGE),
+            },
         }
+        _log.info("LongCat inference job=%s resolution=%s ref_img_index=%s mask_frame_range=%s offload_kv_cache=true", job_id, req["resolution"], REF_IMG_INDEX, MASK_FRAME_RANGE)
         _put_status(folder, "running", "Running LongCat GPU inference (stage marker; not real percent)", 25)
+        inference_started = time.monotonic()
         with httpx.Client(timeout=httpx.Timeout(connect=30, read=None, write=300, pool=60), trust_env=False) as client:
             response = client.post(BASE_URL + "/video", json=body)
             if response.status_code == 404:
                 raise RuntimeError("LocalAI POST /video returned 404; check LocalAI video backend version")
             if response.is_error:
                 raise RuntimeError(f"LocalAI POST /video returned HTTP {response.status_code}: " + response.text[:700])
+            _log.info("LongCat GPU /video completed job=%s in %.1fs", job_id, time.monotonic()-inference_started)
             payload = response.json()
             _write_json(folder / "localai_response.json", payload)
             video_url = _extract_video_url(payload)
@@ -373,6 +394,12 @@ def health() -> dict:
         "model_list_http_status": probe["model_list_http_status"],
         "api_port": 8500,
         "queue_enabled": True,
+        "presenter_tuning": {
+            "ref_img_index": REF_IMG_INDEX,
+            "mask_frame_range": MASK_FRAME_RANGE,
+            "offload_kv_cache": True,
+            "inference_steps": "model-defined (8 when use_distill:true)",
+        },
         "queue_length": len(snap["pending_job_ids"]),
         "worker_busy": snap["running_job_id"] is not None,
         "note": "Stage progress=25 is not true GPU generation percent; query /api/presenter/status/{job_id}.",
