@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Getac LongCat Queue v1.1.0.0, Gateway-only deployment; leaves LocalAI/Qwen running.
+# Getac LongCat Natural Presenter v1.1.1.0, Gateway-only deployment; leaves LocalAI/Qwen running.
 set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${1:-$HOME/Getac-LongCat-Avatar-H200}"
@@ -31,7 +31,7 @@ PY
   fi
 fi
 stamp="$(date +%Y%m%d_%H%M%S)"
-backup="gateway/app.py.before_queue_${stamp}"
+backup="gateway/app.py.before_natural_${stamp}"
 cp gateway/app.py "$backup"
 cp "$SCRIPT_DIR/gateway/app.py" gateway/app.py
 printf '[Getac Queue] Backup: %s\n' "$PROJECT_DIR/$backup"
@@ -45,6 +45,6 @@ printf '\n[Getac Queue] Checking version...\n'
 if command -v curl >/dev/null; then
   curl -fsS --max-time 15 http://127.0.0.1:8500/health || true
 fi
-printf '\n[Getac Queue] Finished. Expected version=1.1.0.0, queue_enabled=true.\n'
+printf '\n[Getac Queue] Finished. Expected version=1.1.1.0, queue_enabled=true.\n'
 printf '[Getac Queue] If rollback needed:\n'
 printf '  cd %q && cp %q gateway/app.py && sudo docker compose -f docker-compose.h200.yml up -d --no-deps --build gateway\n' "$PROJECT_DIR" "$backup"
