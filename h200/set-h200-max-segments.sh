@@ -150,6 +150,8 @@ from datetime import datetime
 import os,re,shutil,sys,tempfile
 p=Path(sys.argv[1]); limit=int(sys.argv[2])
 old=p.read_text(encoding='utf-8-sig')
+if re.search(r'^options\s*:\s*\S+',old,re.M):
+ raise SystemExit('Inline/scalar options syntax is not supported; no change made')
 lines=old.splitlines(keepends=True)
 nl='\r\n' if '\r\n' in old else '\n'
 top=[i for i,line in enumerate(lines) if re.match(r'^options\s*:\s*(?:#.*)?$',line.strip('\r\n'))]
