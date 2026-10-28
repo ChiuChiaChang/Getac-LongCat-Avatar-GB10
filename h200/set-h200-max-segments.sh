@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Getac LongCat H200 max_segments updater v1.0.0.0 (2026-10-28)
+# Getac LongCat H200 max_segments updater v1.0.0.1 (2026-10-28)
 # Default 32 segments. Does NOT change 8-step distilled inference.
 # Usage: bash set-h200-max-segments.sh [8..64] [--no-restart]
 # Scope: getac-longcat-h200-core and (if its source exists) H200 Gateway 8500.
@@ -150,7 +150,7 @@ from datetime import datetime
 import os,re,shutil,sys,tempfile
 p=Path(sys.argv[1]); limit=int(sys.argv[2])
 old=p.read_text(encoding='utf-8-sig')
-if re.search(r'^options\s*:\s*\S+',old,re.M):
+if re.search(r'^options[ \t]*:[ \t]*[^ \t#\r\n]+',old,re.M):
  raise SystemExit('Inline/scalar options syntax is not supported; no change made')
 lines=old.splitlines(keepends=True)
 nl='\r\n' if '\r\n' in old else '\n'
